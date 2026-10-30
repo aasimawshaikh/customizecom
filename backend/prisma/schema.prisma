@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Initial domain sketch. Expand through reviewed migrations before production.
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  CATALOG_MANAGER
+  FULFILLMENT
+  SUPPORT
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  IN_PREPARATION
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String?  @unique
+  phone        String?  @unique
+  displayName  String?
+  role         UserRole @default(CUSTOMER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  recipients   Recipient[]
+  configurations HamperConfiguration[]
+  orders       Order[]
+}
+
+model Recipient {
+  id          String   @id @default(cuid())
+  ownerId     String
+  name        String
+  relationship String?
+  interests   String[] @default([])
+  avoidances  String[] @default([])
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  sortOrder Int       @default(0)
+  products  Product[]
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  categoryId  String
+  sku         String        @unique
+  name        String
+  description String?
+  priceMinor  Int
+  currency    String        @default("INR")
+  status      ProductStatus @default(DRAFT)
+  stockOnHand Int           @default(0)
+  weightGrams Int?
+  lengthMm    Int?
+  widthMm     Int?
+  heightMm    Int?
+  attributes  Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  category    Category      @relation(fields: [categoryId], references: [id])
+  items       HamperItem[]
+
+  @@index([categoryId, status])
+}
+
+model PackagingOption {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  priceMinor  Int
+  currency    String   @default("INR")
+  innerLengthMm Int?
+  innerWidthMm  Int?
+  innerHeightMm Int?
+  maxWeightGrams Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  items       HamperItem[]
+  configurations HamperConfiguration[]
+}
+
+model HamperConfiguration {
+  id                String   @id @default(cuid())
+  userId            String?
+  recipientName     String?
+  occasion          String?
+  intendedMood      String?
+  style             String?
+  budgetMinor       Int?
+  currency          String   @default("INR")
+  messageText       String?
+  messagePaperType  String?
+  digitalGreeting   Json?
+  status            String   @default("DRAFT")
+  subtotalMinor     Int      @default(0)
+  packagingMinor    Int      @default(0)
+  personalizationMinor Int   @default(0)
+  totalMinor        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  packagingOptionId String?
+  packagingOption   PackagingOption? @relation(fields: [packagingOptionId], references: [id])
+  items             HamperItem[]
+  orders            Order[]
+}
+
+model HamperItem {
+  id              String   @id @default(cuid())
+  configurationId String
+  productId       String
+  packagingId     String?
+  quantity        Int      @default(1)
+  unitPriceMinor  Int
+  productSnapshot Json
+  configuration   HamperConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  product         Product @relation(fields: [productId], references: [id])
+  packaging       PackagingOption? @relation(fields: [packagingId], references: [id])
+
+  @@unique([configurationId, productId])
+  @@index([productId])
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  orderNumber       String      @unique
+  userId            String
+  configurationId   String
+  status            OrderStatus @default(PENDING_PAYMENT)
+  currency          String      @default("INR")
+  subtotalMinor     Int
+  taxMinor          Int         @default(0)
+  deliveryMinor     Int         @default(0)
+  totalMinor        Int
+  shippingAddress   Json
+  priceSnapshot     Json
+  paymentReference  String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  user              User        @relation(fields: [userId], references: [id])
+  configuration     HamperConfiguration @relation(fields: [configurationId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
